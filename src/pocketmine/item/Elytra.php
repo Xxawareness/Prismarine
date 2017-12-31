@@ -21,23 +21,15 @@
 
 declare(strict_types=1);
 
-namespace pocketmine\block;
+namespace pocketmine\item;
 
-use pocketmine\item\Tool;
 
-class WoodenButton extends Button{
-
-	protected $id = self::WOODEN_BUTTON;
-
-	public function getName(){
-		return "Wooden Button";
+class Elytra extends Armor{
+	public function __construct($meta = 0, $count = 1){
+		parent::__construct(self::ELYTRA, $meta, $count, "Elytra");
 	}
 
-	public function getHardness(){
-		return 0.5;
-	}
-
-	public function getToolType(){
-		return Tool::TYPE_AXE;
+	public function getArmorPoints() : int{
+		return 0;
 	}
 }

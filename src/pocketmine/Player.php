@@ -65,6 +65,7 @@ use pocketmine\event\player\PlayerPreLoginEvent;
 use pocketmine\event\player\PlayerQuitEvent;
 use pocketmine\event\player\PlayerRespawnEvent;
 use pocketmine\event\player\PlayerToggleFlightEvent;
+use pocketmine\event\player\PlayerToggleGlideEvent;
 use pocketmine\event\player\PlayerToggleSneakEvent;
 use pocketmine\event\player\PlayerToggleSprintEvent;
 use pocketmine\event\player\PlayerTransferEvent;
@@ -1646,6 +1647,10 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 		$this->timings->startTiming();
 
 		if($this->spawned){
+			if($this->isGliding()){
+				$this->resetFallDistance();
+			}
+
 			$this->processMovement($tickDiff);
 			$this->entityBaseTick($tickDiff);
 
@@ -1706,7 +1711,7 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 		}
 	}
 
-	public function canInteract(Vector3 $pos, $maxDistance, $maxDiff = 0.5){
+	public function canInteract(Vector3 $pos, $maxDistance){
 		$eyePos = $this->getPosition()->add(0, $this->getEyeHeight(), 0);
 		if($eyePos->distanceSquared($pos) > $maxDistance ** 2){
 			return false;
@@ -1715,7 +1720,7 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 		$dV = $this->getDirectionPlane();
 		$dot = $dV->dot(new Vector2($eyePos->x, $eyePos->z));
 		$dot1 = $dV->dot(new Vector2($pos->x, $pos->z));
-		return ($dot1 - $dot) >= -$maxDiff;
+		return ($dot1 - $dot) >= -0.8;
 	}
 
 
@@ -2048,8 +2053,8 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 				$this->isTeleporting = false;
 			}
 
-			$packet->yaw %= 360;
-			$packet->pitch %= 360;
+			$packet->yaw = fmod($packet->yaw, 360);
+			$packet->pitch = fmod($packet->pitch, 360);
 
 			if($packet->yaw < 0){
 				$packet->yaw += 360;
@@ -2186,35 +2191,6 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 					}
 
 					$item = $this->inventory->getItemInHand();
-					$damageTable = [
-						Item::WOODEN_SWORD => 4,
-						Item::GOLDEN_SWORD => 4,
-						Item::STONE_SWORD => 5,
-						Item::IRON_SWORD => 6,
-						Item::DIAMOND_SWORD => 7,
-
-						Item::WOODEN_AXE => 3,
-						Item::GOLDEN_AXE => 3,
-						Item::STONE_AXE => 3,
-						Item::IRON_AXE => 5,
-						Item::DIAMOND_AXE => 6,
-
-						Item::WOODEN_PICKAXE => 2,
-						Item::GOLDEN_PICKAXE => 2,
-						Item::STONE_PICKAXE => 3,
-						Item::IRON_PICKAXE => 4,
-						Item::DIAMOND_PICKAXE => 5,
-
-						Item::WOODEN_SHOVEL => 1,
-						Item::GOLDEN_SHOVEL => 1,
-						Item::STONE_SHOVEL => 2,
-						Item::IRON_SHOVEL => 3,
-						Item::DIAMOND_SHOVEL => 4,
-					];
-
-					$damage = [
-						EntityDamageEvent::MODIFIER_BASE => $damageTable[$item->getId()] ?? 1,
-					];
 
 					if(!$this->canInteract($target, 8)){
 						$cancelled = true;
@@ -2224,40 +2200,9 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 						}elseif($this->server->getConfigBoolean("pvp") !== true or $this->server->getDifficulty() === 0){
 							$cancelled = true;
 						}
-
-						$armorValues = [
-							Item::LEATHER_CAP => 1,
-							Item::LEATHER_TUNIC => 3,
-							Item::LEATHER_PANTS => 2,
-							Item::LEATHER_BOOTS => 1,
-							Item::CHAINMAIL_HELMET => 1,
-							Item::CHAINMAIL_CHESTPLATE => 5,
-							Item::CHAINMAIL_LEGGINGS => 4,
-							Item::CHAINMAIL_BOOTS => 1,
-							Item::GOLDEN_HELMET => 1,
-							Item::GOLDEN_CHESTPLATE => 5,
-							Item::GOLDEN_LEGGINGS => 3,
-							Item::GOLDEN_BOOTS => 1,
-							Item::IRON_HELMET => 2,
-							Item::IRON_CHESTPLATE => 6,
-							Item::IRON_LEGGINGS => 5,
-							Item::IRON_BOOTS => 2,
-							Item::DIAMOND_HELMET => 3,
-							Item::DIAMOND_CHESTPLATE => 8,
-							Item::DIAMOND_LEGGINGS => 6,
-							Item::DIAMOND_BOOTS => 3,
-						];
-						$points = 0;
-						foreach($target->getInventory()->getArmorContents() as $index => $i){
-							if(isset($armorValues[$i->getId()])){
-								$points += $armorValues[$i->getId()];
-							}
-						}
-
-						$damage[EntityDamageEvent::MODIFIER_ARMOR] = -floor($damage[EntityDamageEvent::MODIFIER_BASE] * $points * 0.04);
 					}
 
-					$ev = new EntityDamageByEntityEvent($this, $target, EntityDamageEvent::CAUSE_ENTITY_ATTACK, $damage);
+					$ev = new EntityDamageByEntityEvent($this, $target, EntityDamageEvent::CAUSE_ENTITY_ATTACK, $item->getAttackPoints());
 					if($cancelled){
 						$ev->setCancelled();
 					}
@@ -2499,8 +2444,39 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 						$pearl->spawnToAll();
 					}
 				}
+			}elseif($item->getId() === Item::SPLASH_POTION){
+				$nbt = new CompoundTag("", [
+					new ListTag("Pos", [
+						new DoubleTag("", $this->x),
+						new DoubleTag("", $this->y + $this->getEyeHeight()),
+						new DoubleTag("", $this->z)
+					]),
+					new ListTag("Motion", [
+						new DoubleTag("", $aimPos->x),
+						new DoubleTag("", $aimPos->y),
+						new DoubleTag("", $aimPos->z)
+					]),
+					new ListTag("Rotation", [
+						new FloatTag("", $this->yaw),
+						new FloatTag("", $this->pitch)
+					]),
+					new ShortTag("PotionId", $item->getDamage())
+				]);
+				$f = 1.1;
+				$potion = Entity::createEntity("ThrownPotion", $this->getLevel(), $nbt, $this);
+				$potion->setMotion($potion->getMotion()->multiply($f));
+				if($this->isSurvival()){
+					$item->setCount($item->getCount() - 1);
+					$this->inventory->setItemInHand($item->getCount() > 0 ? $item : Item::get(Item::AIR));
+				}
+				$this->server->getPluginManager()->callEvent($ev = new ProjectileLaunchEvent($potion));
+				if($ev->isCancelled()){
+					$potion->kill();
+				}else{
+					$potion->spawnToAll();
+					$this->level->addSound(new LaunchSound($this), $this->getViewers());
+				}
 			}
-
 
 			if($item instanceof Armor){
 				switch($item->getId()){
@@ -2516,6 +2492,7 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 					case Item::IRON_CHESTPLATE:
 					case Item::DIAMOND_CHESTPLATE:
 					case Item::GOLDEN_CHESTPLATE:
+					case Item::ELYTRA:
 						$this->inventory->setChestplate($item);
 						break;
 					case Item::LEATHER_LEGGINGS:
@@ -2775,8 +2752,27 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 				}
 				return true;
 			case PlayerActionPacket::ACTION_START_GLIDE:
+				if($this->inventory->getChestplate()->getId() !== Item::ELYTRA){
+					$this->server->getLogger()->debug("Client ".$this->username." tried to start glide without elytra");
+					return false;
+				}
+				$ev = new PlayerToggleGlideEvent($this, true);
+				$this->server->getPluginManager()->callEvent($ev);
+				if($ev->isCancelled()){
+					$this->sendData($this);
+				}else{
+					$this->setGliding(true);
+				}
+				return true;
 			case PlayerActionPacket::ACTION_STOP_GLIDE:
-				break; //TODO
+				$ev = new PlayerToggleGlideEvent($this, false);
+				$this->server->getPluginManager()->callEvent($ev);
+				if($ev->isCancelled()){
+					$this->sendData($this);
+				}else{
+					$this->setGliding(false);
+				}
+				return true;
 			case PlayerActionPacket::ACTION_CONTINUE_BREAK:
 				$block = $this->level->getBlock($pos);
 				$this->level->broadcastLevelEvent($pos, LevelEventPacket::EVENT_PARTICLE_PUNCH_BLOCK, $block->getId() | ($block->getDamage() << 8) | ($packet->face << 16));
@@ -3350,6 +3346,7 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 		$ev = new PlayerDropItemEvent($this, $item);
 		$this->server->getPluginManager()->callEvent($ev);
 		if($ev->isCancelled()){
+			$this->inventory->addItem($item); //return this item to player's inventory
 			return;
 		}
 
@@ -3921,6 +3918,13 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 		}
 
 		return -1;
+	}
+	
+	/**
+	 * @return Inventory[]
+	 */
+	public function getWindows(){
+		return $this->windowIndex;
 	}
 
 	/**

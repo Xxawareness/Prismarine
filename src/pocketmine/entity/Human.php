@@ -290,7 +290,13 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 
 	public function attack($damage, EntityDamageEvent $source){
 		$cause = $source->getCause();
-		if($cause !== EntityDamageEvent::CAUSE_VOID && $cause !== EntityDamageEvent::CAUSE_CUSTOM && $cause !== EntityDamageEvent::CAUSE_FALL && $cause !== EntityDamageEvent::CAUSE_MAGIC){
+		if($cause !== EntityDamageEvent::CAUSE_VOID && $cause !== EntityDamageEvent::CAUSE_CUSTOM && $cause !== EntityDamageEvent::CAUSE_FALL && $cause !== EntityDamageEvent::CAUSE_MAGIC && $cause !== EntityDamageEvent::CAUSE_FIRE_TICK && $cause !== EntityDamageEvent::CAUSE_SUFFOCATION && $cause !== EntityDamageEvent::CAUSE_STARVATION && $cause !== EntityDamageEvent::CAUSE_SUICIDE){
+			$points = 0;
+			foreach($this->inventory->getArmorContents() as $i){
+				$points += $i->getArmorPoints();
+			}
+			$source->setDamage(-$source->getFinalDamage() * $points * 0.04, EntityDamageEvent::MODIFIER_ARMOR);
+			//Armor enchantments
 			$modifier = 0;
 			if(($enchantment = $this->inventory->getHelmet()->getEnchantment(Enchantment::PROTECTION)) !== null){
 				$modifier += floor((6 + $enchantment->getLevel() ** 2) / 2);
@@ -564,7 +570,8 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 		if(!$this->closed){
 			if($this->getFloatingInventory() instanceof FloatingInventory){
  				foreach($this->getFloatingInventory()->getContents() as $craftingItem){
- 					$this->level->dropItem($this, $craftingItem);
+ 					$this->getInventory()->addItem($craftingItem);
+					$this->getFloatingInventory()->removeItem($craftingItem);
  				}
  			}else{
  				$this->server->getLogger()->debug("Attempted to drop a null crafting inventory\n");

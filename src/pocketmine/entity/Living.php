@@ -351,7 +351,7 @@ abstract class Living extends Entity implements Damageable{
 		if($source instanceof EntityDamageByEntityEvent){
 			$damager = $source->getDamager();
 			if($damager instanceof Player){
-				if(!$damager->isOnGround() and !$damager->isSprinting() and !$damager->hasEffect(Effect::BLINDNESS)){
+				if($source->getCause() === EntityDamageEvent::CAUSE_ENTITY_ATTACK and !$damager->isFlying() and !$damager->isOnGround() and !$damager->isSprinting() and !$damager->hasEffect(Effect::BLINDNESS) and !$damager->isInsideOfWater()){
 					//Critical hit
 					for($i = 0; $i < 5; $i++){
 						$this->level->addParticle(new CriticalParticle(new Vector3($this->x + mt_rand(-15, 15) / 10, $this->y + mt_rand(0, 20) / 10, $this->z + mt_rand(-15, 15) / 10)));
@@ -497,9 +497,11 @@ abstract class Living extends Entity implements Damageable{
 				if($effect->canTick()){
 					$effect->applyEffect($this);
 				}
-				$effect->setDuration($effect->getDuration() - $tickDiff);
-				if($effect->getDuration() <= 0){
+				$duration = $effect->getDuration() - $tickDiff;
+				if($duration <= 0){
 					$this->removeEffect($effect->getId());
+				}else{
+					$effect->setDuration($duration);
 				}
 			}
 		}

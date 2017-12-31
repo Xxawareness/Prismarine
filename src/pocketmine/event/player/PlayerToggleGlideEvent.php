@@ -21,23 +21,31 @@
 
 declare(strict_types=1);
 
-namespace pocketmine\block;
+namespace pocketmine\event\player;
 
-use pocketmine\item\Tool;
+use pocketmine\event\Cancellable;
+use pocketmine\Player;
 
-class WoodenButton extends Button{
+class PlayerToggleGlideEvent extends PlayerEvent implements Cancellable{
+	public static $handlerList = null;
 
-	protected $id = self::WOODEN_BUTTON;
+	/** @var bool */
+	protected $isGliding;
 
-	public function getName(){
-		return "Wooden Button";
+	/**
+	 * @param Player $player
+	 * @param bool   $isGliding
+	 */
+	public function __construct(Player $player, bool $isGliding){
+		$this->player = $player;
+		$this->isGliding = $isGliding;
 	}
 
-	public function getHardness(){
-		return 0.5;
+	/**
+	 * @return bool
+	 */
+	public function isGliding() : bool{
+		return $this->isGliding;
 	}
 
-	public function getToolType(){
-		return Tool::TYPE_AXE;
-	}
 }
